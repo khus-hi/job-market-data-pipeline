@@ -1,0 +1,4 @@
+# Only for spark/ (the cross-day dedup job). Needs a Java 17 or 21 runtime.
+# Kept separate because PySpark is a ~500 MB install that nothing else needs.
+-r requirements.txt
+pyspark==4.1.4

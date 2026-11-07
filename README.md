@@ -3,8 +3,8 @@
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends.
 
-**Status:** running on real Adzuna data with an S3 raw landing zone and Airflow orchestration.
-Spark, dashboard and CI are next.
+**Status:** running on real Adzuna data with an S3 raw landing zone, Airflow orchestration and a
+PySpark cross-day dedup job. Dashboard and CI are next.
 
 ## Architecture
 
@@ -19,9 +19,11 @@ flowchart LR
     E --> F[dbt marts<br/>fct / dim / bridge / top skills]
     F --> G[Top skills this week]
     C -.-> M[(meta schema<br/>pipeline_runs, dbt_results)]
+    B -->|spark/dedup_postings.py<br/>all days| P[Parquet<br/>postings_dedup<br/>+ repost groups]
+    P -.->|--check-dbt| F
 ```
 
-Planned next: a PySpark dedup job, a Streamlit dashboard, CI, and optionally Snowflake.
+Planned next: a Streamlit dashboard, CI, and optionally Snowflake.
 
 ## Data model
 
@@ -93,6 +95,9 @@ python -m ingestion.report                     # print top skills this week
 python -m pytest                               # unit tests
 ```
 
+Spark dedup job (needs Java, see [docs/spark.md](docs/spark.md)):
+`pip install -r requirements-spark.txt`, then `python -m spark.dedup_postings --check-dbt`.
+
 Sample data is invented (companies like "Acme Analytics", IDs starting with `sample-`). Never quote
 numbers from sample runs. Delete `data/` before your first real run so the two don't mix.
 
@@ -159,6 +164,13 @@ JavaScript vs Java, "excel at" vs Excel, R&D vs R) deserve real unit tests.
 **Role from title, not from the search term.** One posting can come back under several searches.
 The `classify_role` macro buckets the title into five roles, tested with `accepted_values`.
 
+**Spark for cross-day dedup, SQL for everything else.** `spark/dedup_postings.py` reads every
+day's raw JSON from the landing zone, collapses repeat sightings to one row per posting, and groups
+reposts (same company, title and location under a new id within 14 days) with a sessionisation
+window. The first half duplicates dbt's `fct_postings` on purpose, and `--check-dbt` verifies the
+two agree. At this data size DuckDB is faster (the Spark run is mostly JVM startup), so dbt stays
+the main path. [docs/spark.md](docs/spark.md) explains when Spark would be worth it.
+
 **Known limits.** Adzuna truncates descriptions (about 500 characters), so skill counts are a lower
 bound. Company identity is name-based (Adzuna has no company ID). A snapshot date is the day we
 fetched, not the day the job was posted.
@@ -166,7 +178,8 @@ fetched, not the day the job was posted.
 ## Data quality
 
 Every run writes to the `meta` schema:
-- `meta.pipeline_runs`: rows and seconds for each step (extract, load, dbt_build, freshness, total)
+- `meta.pipeline_runs`: rows and seconds for each step (extract, load, dbt_build, freshness, total,
+  sla, spark_dedup)
 - `meta.dbt_results`: every dbt model and test result, with failure counts
 
 Tests: `unique`, `not_null`, `accepted_values`, `relationships`, source freshness, two custom
@@ -174,7 +187,13 @@ generic tests (`unique_combination`, `column_a_lte_column_b`) and one singular t
 
 ## What I'd do at 10x scale
 
-_To be written as the stages progress (S3 partitioning, Spark, warehouse choice)._
+- **Raw zone:** keep the `dt=` partitions, but compact each day's small JSON files into one
+  Parquet file, so readers scan columns instead of parsing JSON.
+- **Spark:** run the dedup job on a cluster (EMR Serverless or Databricks) reading `s3a://`
+  directly, and process only new days by merging into a table format (Iceberg or Delta) instead
+  of rewriting all history.
+
+_More to come as the remaining stages land._
 
 ## Résumé metrics
 
@@ -185,7 +204,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | dbt tests | 32 data tests | `dbt build` output |
-| pytest tests | 56 | `pytest` output |
+| pytest tests | 61 | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:
