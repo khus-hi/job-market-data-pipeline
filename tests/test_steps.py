@@ -59,3 +59,12 @@ def test_sla_step_records_met_and_missed(tmp_path):
             "select run_id, status from meta.pipeline_runs where step = 'sla' order by 1"
         ).fetchall()
     assert rows == [("fast", "met"), ("slow", "missed")]
+
+
+def test_extract_works_when_warehouse_folder_does_not_exist_yet(tmp_path, store, fake_source):
+    # With S3 storage nothing creates the local data folder before the run log is written
+    # (this broke the first Airflow run).
+    s = Settings(None, None, tmp_path, tmp_path / "new" / "dir" / "w.duckdb", 5, 2)
+    extract_day(fake_source, PAST, store, max_pages=5, roles=["data engineer"])
+    assert extract_step(s, store, PAST, "run1", "adzuna", today=TODAY) == {"action": REUSE}
+    assert s.duckdb_path.exists()

@@ -51,6 +51,7 @@ def log_step(
     seconds: float,
     details: dict | None = None,
 ) -> None:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(db_path)) as con:
         con.execute(DDL)
         con.execute(
@@ -88,6 +89,7 @@ def log_dbt_results(db_path: Path, run_id: str, dt: date, run_results: Path) -> 
                 now,
             )
         )
+    db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(db_path)) as con:
         con.execute(DDL)
         if rows:
