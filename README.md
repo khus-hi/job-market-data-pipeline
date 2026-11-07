@@ -71,6 +71,11 @@ cp .env.example .env               # Windows: copy .env.example .env
 # then put your Adzuna app_id / app_key in .env
 ```
 
+Mac notes: use Python from python.org (Apple's built-in `python3` is too old), create the venv
+with `python3.13 -m venv .venv`, and run `"/Applications/Python 3.13/Install Certificates.command"`
+once after installing Python, or `pip install` fails with `CERTIFICATE_VERIFY_FAILED`.
+Every new terminal needs `source .venv/bin/activate` before `python`/`pip` work.
+
 Run one day:
 
 ```bash
