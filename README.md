@@ -81,7 +81,7 @@ Raw files land in a local folder by default. To land them in S3, follow
 [docs/aws-setup.md](docs/aws-setup.md) (bucket, least-privilege IAM user, zero-spend budget,
 teardown) and set `STORAGE_BACKEND=s3` in `.env`.
 
-Run in Airflow (Docker + Astro CLI): `astro dev start`, then open http://localhost:8080. See
+Run in Airflow (Docker + Astro CLI): `astro dev start`, then open the Airflow UI URL it prints. See
 [docs/airflow.md](docs/airflow.md) for retries, the SLA, and backfills.
 
 Run one day from the command line:

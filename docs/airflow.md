@@ -17,7 +17,8 @@ server/UI and a Postgres metadata database. It's free and runs entirely on your 
 astro dev start
 ```
 
-The first build takes a few minutes. When it's done, open <http://localhost:8080>. With the
+The first build takes a few minutes. When it's done, open the **Airflow UI** URL that `astro dev start`
+prints (with Astro CLI 1.47: <http://job-market-data-pipeline.localhost:6563>). With the
 current Astro CLI, local dev needs no login.
 
 Inside the containers the DuckDB warehouse lives at `include/data/warehouse.duckdb`. `include/` is
