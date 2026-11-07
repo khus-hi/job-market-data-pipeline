@@ -107,10 +107,18 @@ SQL and rebuild from raw, with no need to call the API again (Adzuna can't retur
 - *dbt* `fct_postings` is incremental with `unique_key=posting_id` (delete+insert), so a posting seen
   again replaces its row instead of adding one.
 
-**Incremental loads.** `fct_postings` only reprocesses the last `lookback_days` (default 3) of
-snapshots, and keeps the earliest `first_seen_date` already in the table. Verified on sample data:
-an incremental build produces exactly the same table as `--full-refresh`. Backfilling a day older
-than the lookback window needs `--full-refresh`.
+**Incremental loads.** `fct_postings` only rebuilds postings touched by the last `lookback_days`
+(default 3) of snapshots: those seen in the window, plus those the table says were last seen in the
+window. Each is recomputed from its full snapshot history, so `first_seen_date` stays correct, and a
+post-hook removes rows that no longer have any snapshot in the window. Backfilling a day older than
+the window needs `--full-refresh`.
+
+The second half of that rule came from a real bug. Re-loading a day for which the API returned a
+*different* set of postings left the vanished postings in the fact table, because a merge on
+`posting_id` only touches keys that are still present. The `relationships` test from
+`fct_postings.company_id` to `dim_company` caught it on a real run. Verified fix: after removing a
+third of two days' postings and rebuilding incrementally, the table matches a `--full-refresh`
+build exactly (the old logic left 46 rows different).
 
 **Pluggable raw storage.** `extract.py` and `load.py` depend on a small `RawStore` interface
 (`write_partition`, `read_partition`, `list_partitions`), with `LocalStore` and `S3Store`
