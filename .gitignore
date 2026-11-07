@@ -21,3 +21,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+
+# Personal study notes stay out of the repo
+PROGRESS.md
+notes/

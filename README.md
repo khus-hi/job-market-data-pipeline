@@ -1,10 +1,9 @@
 # Job Market Data Pipeline
 
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
-to analyze skill demand, salaries and hiring trends. Built stage by stage as a portfolio project.
+to analyze skill demand, salaries and hiring trends. 
 
-**Status:** Stage 1 (local MVP) running on real data. See [PROGRESS.md](PROGRESS.md) and the
-[Stage 1 walkthrough](docs/stage-1-walkthrough.md).
+**Status:** Stage 1 (local MVP) running daily on real data. Stages 2 to 7 in progress.
 
 ## Architecture
 
