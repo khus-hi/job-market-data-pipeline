@@ -3,7 +3,8 @@
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends. Built stage by stage as a portfolio project.
 
-**Status:** Stage 1 (local MVP) built. See [PROGRESS.md](PROGRESS.md).
+**Status:** Stage 1 (local MVP) running on real data. See [PROGRESS.md](PROGRESS.md) and the
+[Stage 1 walkthrough](docs/stage-1-walkthrough.md).
 
 ## Architecture
 
@@ -138,12 +139,12 @@ _To be written as the stages progress (S3 partitioning, Spark, warehouse choice)
 
 ## Résumé metrics
 
-Measured from real Adzuna runs only, never estimated. To be filled in once real runs exist:
+Measured from real Adzuna runs only, never estimated. Updated as more real runs happen.
 
 | Metric | Value | Source |
 |---|---|---|
-| Postings per day | _pending_ | `meta.pipeline_runs`, step `load` |
-| End-to-end runtime | _pending_ | `meta.pipeline_runs`, step `total` |
+| Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
+| End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | dbt tests | 32 data tests (Stage 1) | `dbt build` output |
 | pytest tests | 29 (Stage 1) | `pytest` output |
 | Cloud cost | $0 (Stage 1 is fully local) | |
