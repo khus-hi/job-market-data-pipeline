@@ -204,7 +204,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | dbt tests | 32 data tests | `dbt build` output |
-| pytest tests | 61 | `pytest` output |
+| pytest tests | 62 | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:

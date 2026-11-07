@@ -113,3 +113,21 @@ def test_s3_landing_zone_is_mirrored_locally(store, tmp_path, monkeypatch):
     assert names == ["dt=2026-11-01", "dt=2026-11-02"]
     expected_root = tmp_path / "cache" if isinstance(store, S3Store) else tmp_path / "lake"
     assert all(d.startswith(str(expected_root)) for d in dirs)
+
+
+def test_missing_or_short_fields_do_not_fail_the_job(spark, tmp_path):
+    """Real Adzuna postings can have area=["US"], no location, or an odd date. Spark 4 runs
+    in ANSI mode, where an out-of-range index or a bad timestamp fails the whole job."""
+    store = LocalStore(tmp_path / "lake")
+    land(store, date(2026, 11, 1), {"data engineer": [[
+        make_posting("1", location={"display_name": "US", "area": ["US"]}),
+        make_posting("2", created="not a date"),
+        {"id": 3, "title": "Data Engineer"},  # numeric id, no company, no location
+    ]]})  # fmt: skip
+
+    stats, rows = run(spark, store, tmp_path / "out")
+
+    assert stats["postings"] == 3
+    assert rows["1"]["state_name"] is None
+    assert rows["2"]["posted_at"] is None
+    assert rows["3"]["location_name"] is None

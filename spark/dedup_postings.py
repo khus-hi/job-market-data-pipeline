@@ -101,7 +101,7 @@ def read_sightings(spark: SparkSession, partition_dirs: list[str]) -> DataFrame:
     return (
         envelopes.select(
             F.to_date("snapshot_date").alias("snapshot_date"),
-            F.to_timestamp("ingested_at").alias("ingested_at"),
+            F.try_to_timestamp("ingested_at").alias("ingested_at"),
             "search_role",
             F.explode("response.results").alias("p"),
         )
@@ -114,7 +114,9 @@ def read_sightings(spark: SparkSession, partition_dirs: list[str]) -> DataFrame:
             F.trim("p.title").alias("title"),
             F.nullif(F.trim("p.company.display_name"), F.lit("")).alias("company_name"),
             F.col("p.location.display_name").alias("location_name"),
-            F.col("p.location.area")[1].alias("state_name"),
+            # get() returns NULL when the index is missing. Plain [1] fails the whole job,
+            # because Spark 4 runs in ANSI mode, and some postings only have area=["US"].
+            F.get("p.location.area", 1).alias("state_name"),
             F.col("p.contract_time").alias("contract_time"),
             F.col("p.contract_type").alias("contract_type"),
             F.col("p.salary_min").alias("salary_min"),
@@ -122,7 +124,7 @@ def read_sightings(spark: SparkSession, partition_dirs: list[str]) -> DataFrame:
             (F.coalesce(F.col("p.salary_is_predicted"), F.lit("0")) == "1").alias(
                 "is_salary_predicted"
             ),
-            F.to_timestamp("p.created").alias("posted_at"),
+            F.try_to_timestamp("p.created").alias("posted_at"),
             F.col("p.redirect_url").alias("redirect_url"),
         )
     )
