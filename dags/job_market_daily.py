@@ -18,8 +18,12 @@ import logging
 from datetime import date, timedelta
 
 import pendulum
-from airflow.exceptions import AirflowFailException
 from airflow.sdk import dag, get_current_context, task
+
+try:  # Airflow 3.2+ location; older 3.x versions only have the old one
+    from airflow.sdk.exceptions import AirflowFailException
+except ImportError:  # pragma: no cover
+    from airflow.exceptions import AirflowFailException
 
 from ingestion.alerts import task_failed
 

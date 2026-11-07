@@ -1,6 +1,6 @@
 # Astro Runtime = Airflow 3 + Astronomer's defaults. The ONBUILD steps in this base image
 # copy the repo in and pip-install requirements.txt (the ingestion code's dependencies).
-FROM astrocrpublic.azurecr.io/runtime:3.1-1
+FROM astrocrpublic.azurecr.io/runtime:3.3-12
 
 # dbt gets its own virtualenv so its pinned dependencies can never conflict with Airflow's.
 # duckdb must be the same version on both sides: the loader and dbt write the same file.

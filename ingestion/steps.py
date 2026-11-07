@@ -134,12 +134,14 @@ def sla_step(s: Settings, dt: date, run_id: str, sla_seconds: float) -> dict:
     scheduled runs, manual runs, backfills and `airflow dags test`."""
     import duckdb
 
+    # Computed in SQL as plain seconds, so no timezone objects cross into Python.
     with duckdb.connect(str(s.duckdb_path), read_only=True) as con:
-        started = con.execute(
-            "select min(logged_at - to_seconds(seconds)) from meta.pipeline_runs where run_id = ?",
+        elapsed = con.execute(
+            "select epoch(now()) - epoch(min(logged_at - to_seconds(seconds))) "
+            "from meta.pipeline_runs where run_id = ?",
             [run_id],
         ).fetchone()[0]
-    elapsed = (datetime.now(UTC) - started).total_seconds() if started else 0.0
+    elapsed = float(elapsed or 0.0)
     met = elapsed <= sla_seconds
     log_step(s.duckdb_path, run_id, dt, "sla", "met" if met else "missed", None, elapsed,
              {"sla_seconds": sla_seconds})  # fmt: skip
