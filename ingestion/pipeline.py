@@ -20,7 +20,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 from ingestion.adzuna_client import AdzunaClient
-from ingestion.config import REPO_ROOT, get_settings
+from ingestion.config import REPO_ROOT, get_settings, get_store
 from ingestion.extract import extract_day
 from ingestion.load import load_day
 from ingestion.quality import log_dbt_results, log_step
@@ -51,7 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     s = get_settings()
     run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
-    log.info("run_id=%s date=%s source=%s", run_id, args.date, args.source)
+    store = get_store(s)
+    log.info(
+        "run_id=%s date=%s source=%s raw=%s",
+        run_id,
+        args.date,
+        args.source,
+        store.describe(args.date),
+    )
     s.duckdb_path.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
 
@@ -64,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
             source = AdzunaClient(
                 s.adzuna_app_id, s.adzuna_app_key, s.results_per_page, s.max_days_old
             )
-        stats = extract_day(source, args.date, s.raw_dir, s.max_pages)
+        stats = extract_day(source, args.date, store, s.max_pages)
         log_step(
             s.duckdb_path,
             run_id,
@@ -73,12 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             "success",
             stats["postings"],
             time.monotonic() - t,
-            {**stats, "source": args.source},
+            {**stats, "source": args.source, "raw_location": store.describe(args.date)},
         )
 
     # 2. Load
     t = time.monotonic()
-    stats = load_day(s.duckdb_path, s.raw_dir, args.date)
+    stats = load_day(s.duckdb_path, store, args.date)
     log_step(
         s.duckdb_path,
         run_id,

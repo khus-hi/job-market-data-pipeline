@@ -3,13 +3,14 @@
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends.
 
-**Status:** local MVP working on real Adzuna data. S3 landing zone, Airflow, Spark, dashboard and CI are next.
+**Status:** pipeline working on real Adzuna data, with an S3 raw landing zone. Airflow, Spark,
+dashboard and CI are next.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Adzuna API] -->|ingestion/extract.py| B[Raw JSON files<br/>data/raw/postings/dt=YYYY-MM-DD/]
+    A[Adzuna API] -->|ingestion/extract.py| B[Raw landing zone<br/>s3://bucket/raw/postings/dt=YYYY-MM-DD/<br/>or local folder / MinIO]
     B -->|ingestion/load.py<br/>delete+insert per day| C[(DuckDB raw schema<br/>adzuna_postings, posting_skills)]
     S[skill_catalog.csv] -.->|regex dictionary| B
     C --> D[dbt staging<br/>parse, type, dedupe per day]
@@ -19,8 +20,8 @@ flowchart LR
     C -.-> M[(meta schema<br/>pipeline_runs, dbt_results)]
 ```
 
-Later stages swap the local raw folder for S3 (Stage 2), add Airflow (3), a PySpark dedup job (4),
-a Streamlit dashboard (5), CI (6) and optionally Snowflake (7).
+Planned next: Airflow orchestration, a PySpark dedup job, a Streamlit dashboard, CI, and optionally
+Snowflake.
 
 ## Data model
 
@@ -76,6 +77,10 @@ with `python3.13 -m venv .venv`, and run `"/Applications/Python 3.13/Install Cer
 once after installing Python, or `pip install` fails with `CERTIFICATE_VERIFY_FAILED`.
 Every new terminal needs `source .venv/bin/activate` before `python`/`pip` work.
 
+Raw files land in a local folder by default. To land them in S3, follow
+[docs/aws-setup.md](docs/aws-setup.md) (bucket, least-privilege IAM user, zero-spend budget,
+teardown) and set `STORAGE_BACKEND=s3` in `.env`.
+
 Run one day:
 
 ```bash
@@ -95,7 +100,9 @@ numbers from sample runs. Delete `data/` before your first real run so the two d
 SQL and rebuild from raw, with no need to call the API again (Adzuna can't return past days anyway).
 
 **Idempotency at every layer.** Re-running a day must not duplicate data:
-- *Extract* writes into `dt=…tmp/` and swaps it in, replacing that day's folder.
+- *Extract* fetches every page into memory first, then replaces that day's partition. Locally that
+  is a temp-folder swap. In S3, which has no atomic rename, it uploads every file (same key =
+  overwrite) and then deletes keys left over from an earlier run of that day.
 - *Load* does `delete where snapshot_date = ?` + `insert` inside one transaction.
 - *dbt* `fct_postings` is incremental with `unique_key=posting_id` (delete+insert), so a posting seen
   again replaces its row instead of adding one.
@@ -104,6 +111,17 @@ SQL and rebuild from raw, with no need to call the API again (Adzuna can't retur
 snapshots, and keeps the earliest `first_seen_date` already in the table. Verified on sample data:
 an incremental build produces exactly the same table as `--full-refresh`. Backfilling a day older
 than the lookback window needs `--full-refresh`.
+
+**Pluggable raw storage.** `extract.py` and `load.py` depend on a small `RawStore` interface
+(`write_partition`, `read_partition`, `list_partitions`), with `LocalStore` and `S3Store`
+implementations. Switching backends is a config change. MinIO works through the same `S3Store`
+by setting `S3_ENDPOINT_URL`. The test suite runs every extract and load test against both a local
+folder and a mocked S3 bucket (moto), so the backends are proven to behave the same.
+
+**S3 layout and security.** Hive-style `dt=YYYY-MM-DD` partitions, so Spark, Athena and DuckDB can
+prune by date. The bucket blocks all public access, and the pipeline's IAM user can only list, read,
+write and delete under `raw/` in that one bucket ([policy](infra/iam-policy-raw-landing.json)).
+Keys live in the gitignored `.env`, never in code.
 
 **Grain.** Raw: one row per posting per page fetched. Staging: one posting per snapshot day.
 `fct_postings`: one row per posting, ever. Each grain is enforced with a `unique_combination` test.
@@ -144,9 +162,9 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 |---|---|---|
 | Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
-| dbt tests | 32 data tests (Stage 1) | `dbt build` output |
-| pytest tests | 29 (Stage 1) | `pytest` output |
-| Cloud cost | $0 (Stage 1 is fully local) | |
+| dbt tests | 32 data tests | `dbt build` output |
+| pytest tests | 45 | `pytest` output |
+| Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:
 

@@ -19,8 +19,8 @@ from pathlib import Path
 
 import duckdb
 
-from ingestion.extract import partition_dir
 from ingestion.skills import extract_skills
+from ingestion.storage import RawStore
 
 log = logging.getLogger(__name__)
 
@@ -49,15 +49,12 @@ def ensure_tables(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(DDL)
 
 
-def read_partition(raw_dir: Path, dt: date) -> tuple[list[tuple], list[tuple]]:
+def read_partition(store: RawStore, dt: date) -> tuple[list[tuple], list[tuple]]:
     """Parse every file for one date into rows for the two raw tables."""
-    folder = partition_dir(raw_dir, dt)
-    if not folder.exists():
-        raise FileNotFoundError(f"No raw data for {dt} at {folder}. Run extract first.")
     posting_rows: list[tuple] = []
     skill_rows: set[tuple] = set()
-    for path in sorted(folder.glob("*.json")):
-        envelope = json.loads(path.read_text(encoding="utf-8"))
+    for name, body in store.read_partition(dt):
+        envelope = json.loads(body)
         for rec in envelope["response"].get("results", []):
             pid = str(rec["id"])
             posting_rows.append(
@@ -66,7 +63,7 @@ def read_partition(raw_dir: Path, dt: date) -> tuple[list[tuple], list[tuple]]:
                     envelope["ingested_at"],
                     envelope["search_role"],
                     envelope["page"],
-                    path.name,
+                    name,
                     pid,
                     json.dumps(rec),
                 )
@@ -76,8 +73,8 @@ def read_partition(raw_dir: Path, dt: date) -> tuple[list[tuple], list[tuple]]:
     return posting_rows, sorted(skill_rows)
 
 
-def load_day(db_path: Path, raw_dir: Path, dt: date) -> dict[str, int]:
-    posting_rows, skill_rows = read_partition(raw_dir, dt)
+def load_day(db_path: Path, store: RawStore, dt: date) -> dict[str, int]:
+    posting_rows, skill_rows = read_partition(store, dt)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with duckdb.connect(str(db_path)) as con:
         ensure_tables(con)

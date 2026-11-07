@@ -30,6 +30,10 @@ class Settings:
     duckdb_path: Path
     max_pages: int
     max_days_old: int
+    storage_backend: str = "local"  # local | s3  (MinIO is s3 with an endpoint URL)
+    s3_bucket: str | None = None
+    s3_endpoint_url: str | None = None  # set for MinIO, leave empty for AWS
+    aws_region: str = "us-east-1"
     results_per_page: int = 50  # Adzuna's maximum
 
     @property
@@ -51,4 +55,23 @@ def get_settings() -> Settings:
         duckdb_path=_resolve(os.getenv("DUCKDB_PATH", "data/warehouse.duckdb")),
         max_pages=int(os.getenv("ADZUNA_MAX_PAGES", "3")),
         max_days_old=int(os.getenv("ADZUNA_MAX_DAYS_OLD", "2")),
+        storage_backend=os.getenv("STORAGE_BACKEND", "local").strip().lower(),
+        s3_bucket=os.getenv("S3_BUCKET") or None,
+        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL") or None,
+        aws_region=os.getenv("AWS_REGION", "us-east-1"),
     )
+
+
+def get_store(settings: Settings):
+    """Build the raw landing-zone backend chosen in .env."""
+    from ingestion.storage import LocalStore, S3Store
+
+    if settings.storage_backend == "local":
+        return LocalStore(settings.data_dir)
+    if settings.storage_backend == "s3":
+        if not settings.s3_bucket:
+            raise ValueError("STORAGE_BACKEND=s3 needs S3_BUCKET in .env")
+        return S3Store.from_settings(
+            settings.s3_bucket, settings.s3_endpoint_url, settings.aws_region
+        )
+    raise ValueError(f"Unknown STORAGE_BACKEND={settings.storage_backend!r} (use local or s3)")

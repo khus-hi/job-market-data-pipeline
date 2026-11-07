@@ -50,3 +50,24 @@ def fake_source() -> FakeSource:
             ],
         }
     )
+
+
+@pytest.fixture(params=["local", "s3"])
+def store(request, tmp_path, monkeypatch):
+    """Every test that uses `store` runs twice: once on a local folder, once on a
+    mocked S3 bucket (moto). That proves both backends behave the same."""
+    from ingestion.storage import LocalStore, S3Store
+
+    if request.param == "local":
+        yield LocalStore(tmp_path / "lake")
+        return
+
+    import boto3
+    from moto import mock_aws
+
+    for var in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+        monkeypatch.setenv(var, "testing")  # fake creds: moto never talks to AWS
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket="test-bucket")
+        yield S3Store("test-bucket", client)
