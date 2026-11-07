@@ -25,3 +25,8 @@ __pycache__/
 # Personal study notes stay out of the repo
 PROGRESS.md
 notes/
+
+# Airflow / Astro local state
+include/data/
+airflow_settings.yaml
+.astro/test_dag_integrity_default.py

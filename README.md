@@ -3,13 +3,14 @@
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends.
 
-**Status:** pipeline working on real Adzuna data, with an S3 raw landing zone. Airflow, Spark,
-dashboard and CI are next.
+**Status:** running on real Adzuna data with an S3 raw landing zone and Airflow orchestration.
+Spark, dashboard and CI are next.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
+    AF{{Airflow DAG<br/>job_market_daily<br/>daily 13:00 UTC}} -.orchestrates.-> A
     A[Adzuna API] -->|ingestion/extract.py| B[Raw landing zone<br/>s3://bucket/raw/postings/dt=YYYY-MM-DD/<br/>or local folder / MinIO]
     B -->|ingestion/load.py<br/>delete+insert per day| C[(DuckDB raw schema<br/>adzuna_postings, posting_skills)]
     S[skill_catalog.csv] -.->|regex dictionary| B
@@ -20,8 +21,7 @@ flowchart LR
     C -.-> M[(meta schema<br/>pipeline_runs, dbt_results)]
 ```
 
-Planned next: Airflow orchestration, a PySpark dedup job, a Streamlit dashboard, CI, and optionally
-Snowflake.
+Planned next: a PySpark dedup job, a Streamlit dashboard, CI, and optionally Snowflake.
 
 ## Data model
 
@@ -67,7 +67,7 @@ Requirements: Python 3.11 to 3.13, git. (Docker is only needed from Stage 2/3.)
 git clone https://github.com/khus-hi/job-market-data-pipeline.git && cd job-market-data-pipeline
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 cp .env.example .env               # Windows: copy .env.example .env
 # then put your Adzuna app_id / app_key in .env
 ```
@@ -81,7 +81,10 @@ Raw files land in a local folder by default. To land them in S3, follow
 [docs/aws-setup.md](docs/aws-setup.md) (bucket, least-privilege IAM user, zero-spend budget,
 teardown) and set `STORAGE_BACKEND=s3` in `.env`.
 
-Run one day:
+Run in Airflow (Docker + Astro CLI): `astro dev start`, then open http://localhost:8080. See
+[docs/airflow.md](docs/airflow.md) for retries, the SLA, and backfills.
+
+Run one day from the command line:
 
 ```bash
 python -m ingestion.pipeline --source sample   # fake data, no keys needed
@@ -131,6 +134,17 @@ prune by date. The bucket blocks all public access, and the pipeline's IAM user 
 write and delete under `raw/` in that one bucket ([policy](infra/iam-policy-raw-landing.json)).
 Keys live in the gitignored `.env`, never in code.
 
+**Orchestration (Airflow 3 via Astro).** One task per step (extract, load, dbt build, freshness,
+SLA check), so a failure retries only that step and the UI shows where a run broke. The task code
+calls the same `ingestion/steps.py` functions as the CLI, so there's one implementation. Retries
+use exponential backoff for the flaky API call and are disabled for dbt, because a failing data
+test isn't fixed by retrying. `max_active_runs=1` because DuckDB has a single writer. dbt runs in
+its own virtualenv inside the image, so its dependencies can't clash with Airflow's.
+
+**Backfills that respect the source.** Adzuna can't return past days, so the extract task fetches
+only for today. For a past date it reuses the raw files landed that day, or fails without retries
+if there are none. A backfill therefore re-processes real history and never invents it.
+
 **Grain.** Raw: one row per posting per page fetched. Staging: one posting per snapshot day.
 `fct_postings`: one row per posting, ever. Each grain is enforced with a `unique_combination` test.
 
@@ -171,7 +185,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | dbt tests | 32 data tests | `dbt build` output |
-| pytest tests | 45 | `pytest` output |
+| pytest tests | 54 | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:

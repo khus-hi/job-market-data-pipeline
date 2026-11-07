@@ -1,0 +1,18 @@
+# Never bake secrets or local data into the image. Astro passes .env to the containers
+# as environment variables at runtime instead.
+.env
+.venv
+data/
+include/data/
+notes/
+PROGRESS.md
+.git
+.github
+**/__pycache__
+.pytest_cache
+.ruff_cache
+dbt/target
+dbt/logs
+dbt/dbt_packages
+logs/
+airflow_settings.yaml
