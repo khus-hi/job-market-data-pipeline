@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_adzuna__postings
+    description: Typed Adzuna postings. Grain is one posting per snapshot day.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [posting_id, snapshot_date]
+    columns:
+      - name: posting_id
+        data_tests: [not_null]
+      - name: title
+        data_tests: [not_null]
+      - name: contract_time
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [full_time, part_time]
+              config:
+                where: contract_time is not null
+  - name: stg_adzuna__posting_skills
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [posting_id, snapshot_date, skill_name]

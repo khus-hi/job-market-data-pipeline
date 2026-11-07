@@ -1,0 +1,34 @@
+skill_name,category,pattern,case_sensitive
+SQL,language,\bsql\b,false
+Python,language,\bpython\b,false
+R,language,(?<![\w&/])R(?![\w&/'])(?! &),true
+Scala,language,\bscala\b,false
+Java,language,\bjava\b(?!script),false
+Spark,processing,\b(?:py)?spark\b,false
+Kafka,processing,\bkafka\b,false
+Hadoop,processing,\bhadoop\b,false
+Airflow,orchestration,\b(?:apache )?airflow\b,false
+dbt,transformation,\bdbt\b,false
+Fivetran,ingestion,\bfivetran\b,false
+Snowflake,warehouse,\bsnowflake\b,false
+BigQuery,warehouse,\bbig ?query\b,false
+Redshift,warehouse,\bredshift\b,false
+Databricks,warehouse,\bdatabricks\b,false
+PostgreSQL,database,\bpostgres(?:ql)?\b,false
+MongoDB,database,\bmongo(?:db)?\b,false
+AWS,cloud,\baws\b|\bamazon web services\b,false
+Azure,cloud,\bazure\b,false
+GCP,cloud,\bgcp\b|\bgoogle cloud\b,false
+Docker,devops,\bdocker\b,false
+Kubernetes,devops,\bkubernetes\b|\bk8s\b,false
+Terraform,devops,\bterraform\b,false
+Git,devops,\bgit\b|\bgithub\b|\bgitlab\b,false
+Tableau,bi,\btableau\b,false
+Power BI,bi,\bpower ?bi\b,false
+Looker,bi,\blooker\b,false
+Excel,bi,\bExcel\b(?! (?:at|in)\b),true
+pandas,library,\bpandas\b,false
+Machine Learning,method,\bmachine learning\b|\bml\b,false
+Statistics,method,\bstatistic(?:s|al)\b,false
+ETL,method,\betl\b|\belt\b,false
+Data Modeling,method,\bdata model(?:ing|ling|s)?\b,false

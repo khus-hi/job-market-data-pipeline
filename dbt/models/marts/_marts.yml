@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: fct_postings
+    description: One row per job posting, with its latest attributes and the days it was first/last seen.
+    data_tests:
+      - column_a_lte_column_b:
+          arguments:
+            column_a: salary_min
+            column_b: salary_max
+      - column_a_lte_column_b:
+          arguments:
+            column_a: first_seen_date
+            column_b: last_seen_date
+    columns:
+      - name: posting_id
+        data_tests: [unique, not_null]
+      - name: role
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [data_engineer, data_analyst, analytics_engineer, data_scientist, other]
+      - name: company_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_id
+      - name: first_seen_date
+        data_tests: [not_null]
+
+  - name: dim_company
+    columns:
+      - name: company_id
+        data_tests: [unique, not_null]
+
+  - name: dim_skill
+    columns:
+      - name: skill_id
+        data_tests: [unique, not_null]
+      - name: skill_name
+        data_tests: [unique, not_null]
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [language, processing, orchestration, transformation, ingestion,
+                         warehouse, database, cloud, devops, bi, library, method]
+
+  - name: bridge_posting_skill
+    description: Posting-to-skill link table (many-to-many).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [posting_id, skill_id]
+    columns:
+      - name: posting_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_postings')
+                field: posting_id
+      - name: skill_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_skill')
+                field: skill_id
+
+  - name: mart_top_skills_by_role_week
+    description: Skill demand by role and week (week = week the posting was first seen).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [week_start, role, skill_name]

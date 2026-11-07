@@ -1,0 +1,8 @@
+# Pinned to the versions tested in Stage 1 (Python 3.11-3.13).
+dbt-core==1.12.6
+dbt-duckdb==1.11.1
+duckdb==2.0.0
+pytest==9.2.0
+python-dotenv==1.2.4
+requests==2.34.2
+ruff==0.17.4

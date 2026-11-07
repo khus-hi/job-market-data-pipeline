@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: adzuna
+    description: Raw Adzuna API records, loaded verbatim by ingestion/load.py.
+    schema: raw
+    tables:
+      - name: adzuna_postings
+        description: One row per posting per page fetched, with the JSON payload as-is.
+        config:
+          loaded_at_field: ingested_at
+          freshness:
+            # Daily pipeline: warn if nothing new in 26h, error after 50h.
+            warn_after: {count: 26, period: hour}
+            error_after: {count: 50, period: hour}
+        columns:
+          - name: posting_id
+            data_tests: [not_null]
+          - name: snapshot_date
+            data_tests: [not_null]
+      - name: posting_skills
+        description: Skills extracted in Python (ingestion/skills.py), one row per posting+skill+day.
+        columns:
+          - name: skill_name
+            data_tests:
+              - not_null
+              - relationships:
+                  arguments:
+                    to: ref('skill_catalog')
+                    field: skill_name

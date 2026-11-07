@@ -1,0 +1,9 @@
+# No secrets here: DuckDB is a local file. The path comes from DUCKDB_PATH if set.
+# dbt always runs from the repo root, so the default path is relative to it.
+job_market:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', 'data/warehouse.duckdb') }}"
+      threads: 4
