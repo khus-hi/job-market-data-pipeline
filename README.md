@@ -203,6 +203,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 |---|---|---|
 | Postings fetched per daily run | 567 rows, 553 unique postings (first real run, 2026-11-07) | `meta.pipeline_runs`, step `load`; `marts.fct_postings` |
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
+| Spark cross-day dedup | 1,126 raw sightings → 912 unique postings → 875 distinct jobs (37 reposts) over 2 days, 8.3 s; matches dbt `fct_postings` with 0 differing rows | `meta.pipeline_runs`, step `spark_dedup`; `--check-dbt` |
 | dbt tests | 32 data tests | `dbt build` output |
 | pytest tests | 63 | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
