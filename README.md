@@ -3,8 +3,8 @@
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends.
 
-**Status:** running on real Adzuna data with an S3 raw landing zone, Airflow orchestration and a
-PySpark cross-day dedup job. Dashboard and CI are next.
+**Status:** running on real Adzuna data with an S3 raw landing zone, Airflow orchestration, a
+PySpark cross-day dedup job and a Streamlit dashboard. CI is next.
 
 ## Architecture
 
@@ -21,9 +21,12 @@ flowchart LR
     C -.-> M[(meta schema<br/>pipeline_runs, dbt_results)]
     B -->|spark/dedup_postings.py<br/>all days| P[Parquet<br/>postings_dedup<br/>+ repost groups]
     P -.->|--check-dbt| F
+    F --> DB[Streamlit dashboard<br/>dashboard/app.py]
+    P --> DB
+    M --> DB
 ```
 
-Planned next: a Streamlit dashboard, CI, and optionally Snowflake.
+Planned next: CI, and optionally Snowflake.
 
 ## Data model
 
@@ -94,6 +97,10 @@ python -m ingestion.pipeline                   # real Adzuna data for today
 python -m ingestion.report                     # print top skills this week
 python -m pytest                               # unit tests
 ```
+
+Dashboard: `streamlit run dashboard/app.py`, then open <http://localhost:8501>. It reads the
+warehouse read-only: top skills by role and week, salary ranges by role, top hiring companies,
+reposts (from the Spark job) and pipeline health (`meta` tables).
 
 Spark dedup job (needs Java, see [docs/spark.md](docs/spark.md)):
 `pip install -r requirements-spark.txt`, then `python -m spark.dedup_postings --check-dbt`.
@@ -171,6 +178,12 @@ window. The first half duplicates dbt's `fct_postings` on purpose, and `--check-
 two agree. At this data size DuckDB is faster (the Spark run is mostly JVM startup), so dbt stays
 the main path. [docs/spark.md](docs/spark.md) explains when Spark would be worth it.
 
+**Dashboard reads, never writes.** The Streamlit app opens a short-lived read-only DuckDB
+connection per refresh and caches results for 5 minutes, so it can't hold the single DuckDB write
+lock while the pipeline runs. All SQL lives in `dashboard/queries.py` and is tested against a
+warehouse built by the real pipeline from sample data, so a mart schema change breaks a test
+rather than the dashboard.
+
 **Known limits.** Adzuna truncates descriptions (about 500 characters), so skill counts are a lower
 bound. Company identity is name-based (Adzuna has no company ID). A snapshot date is the day we
 fetched, not the day the job was posted.
@@ -205,7 +218,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | Spark cross-day dedup | 1,126 raw sightings → 912 unique postings → 875 distinct jobs (37 reposts) over 2 days, 8.3 s; matches dbt `fct_postings` with 0 differing rows | `meta.pipeline_runs`, step `spark_dedup`; `--check-dbt` |
 | dbt tests | 32 data tests | `dbt build` output |
-| pytest tests | 63 | `pytest` output |
+| pytest tests | 70 | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:

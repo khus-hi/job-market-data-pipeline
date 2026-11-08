@@ -1,0 +1,3 @@
+# Streamlit dashboard (dashboard/app.py). Brings in pandas and altair.
+-r requirements.txt
+streamlit==1.67.0

@@ -1,5 +1,5 @@
 # Local development: runtime deps + dbt + test/lint tools, pinned to tested versions.
--r requirements.txt
+-r requirements-dashboard.txt
 dbt-core==1.12.6
 dbt-duckdb==1.11.1
 moto==5.2.5
