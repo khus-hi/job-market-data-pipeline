@@ -44,6 +44,11 @@ It reads the landing zone set by `STORAGE_BACKEND`. With S3, the days are first 
 `hadoop-aws` jars and the AWS SDK bundle, several hundred MB of downloads to read a few MB of
 JSON. On a real cluster you would read `s3a://` directly.
 
+`--check-dbt` first checks that the warehouse holds the same version of every landed day (same
+raw row count per day). If a day was never loaded, or was re-extracted after loading (an Airflow
+run lands into the same bucket but loads its own warehouse file), it lists those days and the
+command that reloads each one, instead of reporting a misleading difference.
+
 Query the output from DuckDB, no Spark needed:
 
 ```sql

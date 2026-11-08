@@ -84,7 +84,9 @@ def test_reposts_grouped_only_within_gap(spark, tmp_path):
     assert rows["a3"]["canonical_posting_id"] == "a3" and not rows["a3"]["is_repost"]
     assert rows["g2"]["canonical_posting_id"] == "g2"
     assert rows["n2"]["canonical_posting_id"] == "n2"
+    per_day = stats.pop("sightings_per_day")
     assert stats == {"days": 3, "sightings": 7, "postings": 7, "distinct_jobs": 6, "reposts": 1}
+    assert per_day == {"2026-11-01": 3, "2026-11-05": 3, "2026-11-30": 1}
 
 
 def test_rerun_overwrites_output(spark, tmp_path):
@@ -131,3 +133,11 @@ def test_missing_or_short_fields_do_not_fail_the_job(spark, tmp_path):
     assert rows["1"]["state_name"] is None
     assert rows["2"]["posted_at"] is None
     assert rows["3"]["location_name"] is None
+
+
+def test_days_out_of_sync():
+    from spark.dedup_postings import days_out_of_sync
+
+    landed = {"2026-11-07": 573, "2026-11-08": 553, "2026-11-09": 10}
+    loaded = {"2026-11-07": 567, "2026-11-08": 553}  # 07 re-extracted, 09 never loaded
+    assert days_out_of_sync(landed, loaded) == ["2026-11-07", "2026-11-09"]

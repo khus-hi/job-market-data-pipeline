@@ -215,6 +215,12 @@ def run_job(spark: SparkSession, partition_dirs: list[str], out_dir: Path, gap_d
         "postings": stats["postings"],
         "distinct_jobs": stats["distinct_jobs"],
         "reposts": stats["reposts"] or 0,
+        # Per-day input size, so --check-dbt can tell whether the warehouse loaded the
+        # same version of each day that's in the landing zone now.
+        "sightings_per_day": {
+            r["snapshot_date"].isoformat(): r["count"]
+            for r in sightings.groupBy("snapshot_date").count().collect()
+        },
     }
     sightings.unpersist()
     return stats
@@ -245,13 +251,21 @@ def day_of(partition_dir: str) -> date:
     return datetime.strptime(Path(partition_dir).name, "dt=%Y-%m-%d").date()
 
 
-def warehouse_days(db_path: Path) -> list[date]:
-    """Days loaded into the DuckDB warehouse, which is what dbt's fct_postings is built from."""
+def warehouse_days(db_path: Path) -> dict[str, int]:
+    """Raw rows per day in the DuckDB warehouse, which is what dbt's fct_postings is built from."""
     import duckdb
 
     with duckdb.connect(str(db_path), read_only=True) as con:
-        rows = con.execute("select distinct snapshot_date from raw.adzuna_postings order by 1")
-        return [r[0] for r in rows.fetchall()]
+        rows = con.execute(
+            "select snapshot_date, count(*) from raw.adzuna_postings group by 1"
+        ).fetchall()
+    return {d.isoformat(): n for d, n in rows}
+
+
+def days_out_of_sync(landed: dict[str, int], loaded: dict[str, int]) -> list[str]:
+    """Days whose raw row count differs between the landing zone and the warehouse: never
+    loaded, or re-extracted after they were loaded (e.g. by an Airflow run)."""
+    return sorted(d for d, n in landed.items() if loaded.get(d) != n)
 
 
 def compare_with_dbt(db_path: Path, out_dir: Path) -> int:
@@ -314,15 +328,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.check_dbt:
-        # Spark reads the landing zone; dbt reads the warehouse. If a landed day was never
-        # loaded (e.g. Airflow landed it but loaded a different warehouse file), the two
-        # differ for a boring reason. Say so instead of reporting a misleading diff.
-        spark_days = [day_of(d) for d in dirs]
-        missing = sorted(set(spark_days) - set(warehouse_days(s.duckdb_path)))
+        # Spark reads the landing zone; dbt reads the warehouse. If a day was never loaded,
+        # or was re-extracted after loading (Airflow re-runs land into the same bucket but
+        # load a different warehouse file), the two differ for a boring reason. Say so
+        # instead of reporting a misleading diff.
+        loaded = warehouse_days(s.duckdb_path)
+        missing = days_out_of_sync(stats["sightings_per_day"], loaded)
         if missing:
-            days = ", ".join(map(str, missing))
-            print(f"Can't compare yet: {s.duckdb_path} has no data for {days}.")
-            print("Load each day, then re-run:")
+            print(f"Can't compare yet: {s.duckdb_path} doesn't match the landing zone for:")
+            for dt in missing:
+                landed = stats["sightings_per_day"][dt]
+                print(f"  {dt}: {landed} rows landed, {loaded.get(dt, 0)} rows loaded")
+            print("(Re-)load each day, then re-run:")
             for dt in missing:
                 print(f"  python -m ingestion.pipeline --date {dt} --skip-extract")
             return 1
