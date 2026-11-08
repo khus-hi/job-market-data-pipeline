@@ -31,7 +31,7 @@ import logging
 import sys
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -241,8 +241,24 @@ def local_partitions(s, cache_root: Path) -> list[str]:
     return [store.describe(dt) for dt in store.list_partitions()]  # skips crashed *.tmp dirs
 
 
+def day_of(partition_dir: str) -> date:
+    return datetime.strptime(Path(partition_dir).name, "dt=%Y-%m-%d").date()
+
+
+def warehouse_days(db_path: Path) -> list[date]:
+    """Days loaded into the DuckDB warehouse, which is what dbt's fct_postings is built from."""
+    import duckdb
+
+    with duckdb.connect(str(db_path), read_only=True) as con:
+        rows = con.execute("select distinct snapshot_date from raw.adzuna_postings order by 1")
+        return [r[0] for r in rows.fetchall()]
+
+
 def compare_with_dbt(db_path: Path, out_dir: Path) -> int:
-    """Rows where Spark and dbt's fct_postings disagree on the posting set or seen dates."""
+    """Rows where Spark and dbt's fct_postings disagree on the posting set or seen dates.
+
+    Only meaningful when both saw the same days: check that with warehouse_days() first.
+    """
     import duckdb
 
     with duckdb.connect(str(db_path), read_only=True) as con:
@@ -287,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         spark.stop()
     seconds = time.monotonic() - started
 
-    newest = datetime.strptime(Path(dirs[-1]).name, "dt=%Y-%m-%d").date()
+    newest = day_of(dirs[-1])
     log_step(s.duckdb_path, run_id, newest, "spark_dedup", "success", stats["postings"],
              seconds, stats)  # fmt: skip
     log.info("wrote %s in %.1fs: %s", out_dir, seconds, stats)
@@ -298,6 +314,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.check_dbt:
+        # Spark reads the landing zone; dbt reads the warehouse. If a landed day was never
+        # loaded (e.g. Airflow landed it but loaded a different warehouse file), the two
+        # differ for a boring reason. Say so instead of reporting a misleading diff.
+        spark_days = [day_of(d) for d in dirs]
+        missing = sorted(set(spark_days) - set(warehouse_days(s.duckdb_path)))
+        if missing:
+            days = ", ".join(map(str, missing))
+            print(f"Can't compare yet: {s.duckdb_path} has no data for {days}.")
+            print("Load each day, then re-run:")
+            for dt in missing:
+                print(f"  python -m ingestion.pipeline --date {dt} --skip-extract")
+            return 1
         diff = compare_with_dbt(s.duckdb_path, out_dir)
         print(f"Spark vs dbt fct_postings: {diff} rows differ")
         return 0 if diff == 0 else 1
