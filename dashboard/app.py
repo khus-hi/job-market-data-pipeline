@@ -50,7 +50,7 @@ def bars(df, x: str, y: str, x_title: str, fmt: str, tooltip: list) -> alt.Chart
             y=alt.Y(y, sort="-x", title=None, axis=alt.Axis(labelOverlap=False, labelLimit=180)),
             tooltip=tooltip,
         )
-        .properties(height=max(160, 30 * len(df)))
+        .properties(height=60 + 32 * len(df))
     )
 
 
