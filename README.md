@@ -1,10 +1,12 @@
 # Job Market Data Pipeline
 
+[![CI](https://github.com/khus-hi/job-market-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/khus-hi/job-market-data-pipeline/actions/workflows/ci.yml)
+
 Daily ingestion of US data/analytics job postings from the [Adzuna API](https://developer.adzuna.com/)
 to analyze skill demand, salaries and hiring trends.
 
 **Status:** running on real Adzuna data with an S3 raw landing zone, Airflow orchestration, a
-PySpark cross-day dedup job and a Streamlit dashboard. CI is next.
+PySpark cross-day dedup job, a Streamlit dashboard and GitHub Actions CI.
 
 ## Architecture
 
@@ -26,7 +28,7 @@ flowchart LR
     M --> DB
 ```
 
-Planned next: CI, and optionally Snowflake.
+Optional next step: Snowflake as a second warehouse target.
 
 ## Data model
 
@@ -184,6 +186,13 @@ lock while the pipeline runs. All SQL lives in `dashboard/queries.py` and is tes
 warehouse built by the real pipeline from sample data, so a mart schema change breaks a test
 rather than the dashboard.
 
+**CI on every pull request.** GitHub Actions runs four jobs, with no secrets: ruff lint and
+format check; the full pytest suite including the Spark tests (on a JVM set up by the workflow);
+two days of the real pipeline on generated sample data, so `dbt build` runs every model and data
+test through both the first build and the incremental path, followed by a check that the
+incremental `fct_postings` equals a `--full-refresh` rebuild; and an Airflow DAG integrity test
+against the Airflow version in the Astro image ([workflow](.github/workflows/ci.yml)).
+
 **Known limits.** Adzuna truncates descriptions (about 500 characters), so skill counts are a lower
 bound. Company identity is name-based (Adzuna has no company ID). A snapshot date is the day we
 fetched, not the day the job was posted.
@@ -218,7 +227,7 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | End-to-end runtime | 31.5 s (28.3 s of it is deliberate API throttling) | `meta.pipeline_runs`, step `total` |
 | Spark cross-day dedup | 1,126 raw sightings → 912 unique postings → 875 distinct jobs (37 reposts) over 2 days, 8.3 s; matches dbt `fct_postings` with 0 differing rows | `meta.pipeline_runs`, step `spark_dedup`; `--check-dbt` |
 | dbt tests | 32 data tests | `dbt build` output |
-| pytest tests | 70 | `pytest` output |
+| pytest tests | 71 (70 in the dev environment, plus the DAG integrity test in its own CI job) | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
 Queries to pull them:

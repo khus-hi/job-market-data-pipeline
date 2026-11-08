@@ -1,0 +1,101 @@
+# Runs on every pull request and every push to main. Free for public repositories.
+# No secrets are used: tests mock the API and S3, and dbt runs on generated sample data.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push to the same branch cancels the run that's still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  # Local raw store and scratch paths, so no job ever needs AWS or a developer's .env.
+  STORAGE_BACKEND: local
+  DATA_DIR: ${{ github.workspace }}/ci-data
+  DUCKDB_PATH: ${{ github.workspace }}/ci-data/warehouse.duckdb
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install ruff==0.17.4
+      - run: ruff check --output-format=github .
+      - run: ruff format --check .
+
+  test:
+    name: Unit tests (pytest, incl. Spark)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - uses: actions/setup-java@v4  # PySpark runs on the JVM
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: pip install -r requirements-dev.txt -r requirements-spark.txt
+      - run: pytest -v
+
+  dbt:
+    name: dbt build on sample data
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      # Two days, so the incremental fct_postings path runs too, not just the first build.
+      # The pipeline exits non-zero if any dbt model or data test fails.
+      - name: Day 1 (full build)
+        run: python -m ingestion.pipeline --source sample --date 2026-11-02
+      - name: Day 2 (incremental build)
+        run: python -m ingestion.pipeline --source sample --date 2026-11-03
+      - name: Incremental result equals a full rebuild
+        run: python .github/scripts/check_incremental.py
+      - name: Run log
+        if: always()
+        run: python .github/scripts/show_run_log.py
+
+  dag:
+    name: Airflow DAG integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AIRFLOW_VERSION: "3.3.2"  # the Airflow version in Astro Runtime 3.3 (see Dockerfile)
+      AIRFLOW_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.AIRFLOW_PYTHON }}
+      # Airflow publishes a tested set of dependency versions ("constraints"). Installing
+      # against it is the supported way to get a working Airflow from pip.
+      - run: >
+          pip install "apache-airflow==${AIRFLOW_VERSION}"
+          --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${AIRFLOW_PYTHON}.txt"
+      - run: pip install -r requirements.txt pytest==9.2.0
+      - run: pytest -v tests/test_dag_integrity.py
+        env:
+          AIRFLOW_HOME: ${{ runner.temp }}/airflow
