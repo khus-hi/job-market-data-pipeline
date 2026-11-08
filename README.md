@@ -230,7 +230,8 @@ Measured from real Adzuna runs only, never estimated. Updated as more real runs 
 | pytest tests | 71 (70 in the dev environment, plus the DAG integrity test in its own CI job) | `pytest` output |
 | Cloud cost | $0 so far | AWS Billing |
 
-Queries to pull them:
+`python -m ingestion.metrics` prints all of these from the run logs as a Markdown table.
+The underlying queries:
 
 ```sql
 select snapshot_date, row_count from meta.pipeline_runs where step = 'load' order by 1;

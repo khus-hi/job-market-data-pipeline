@@ -3,31 +3,16 @@
 
 from __future__ import annotations
 
-import os
-import shutil
-from datetime import date
-
 import pytest
 
 pd = pytest.importorskip("pandas")
-if not (os.getenv("DBT_EXECUTABLE") or shutil.which("dbt")):
-    pytest.skip("dbt is not installed", allow_module_level=True)
 
 from dashboard import queries as q  # noqa: E402
 
 
 @pytest.fixture(scope="module")
-def warehouse(tmp_path_factory):
-    from ingestion.pipeline import main
-
-    root = tmp_path_factory.mktemp("dash")
-    env = {"DATA_DIR": str(root), "DUCKDB_PATH": str(root / "w.duckdb"), "STORAGE_BACKEND": "local"}
-    with pytest.MonkeyPatch.context() as mp:
-        for k, v in env.items():
-            mp.setenv(k, v)
-        for d in (date(2026, 11, 2), date(2026, 11, 3)):
-            assert main(["--source", "sample", "--date", d.isoformat()]) == 0
-        yield root
+def warehouse(sample_warehouse):
+    return sample_warehouse
 
 
 @pytest.fixture

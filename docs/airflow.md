@@ -24,6 +24,21 @@ current Astro CLI, local dev needs no login.
 Inside the containers the DuckDB warehouse lives at `include/data/warehouse.duckdb`. `include/` is
 mounted from the repo, so the file survives restarts and you can query it from your Mac.
 
+### One warehouse for everything
+
+By default the command line uses `data/warehouse.duckdb` and Airflow uses
+`include/data/warehouse.duckdb`, so a day Airflow loaded is missing from the command line, the
+Spark job's `--check-dbt` and the dashboard. To share Airflow's warehouse, add this to `.env`:
+
+```
+DUCKDB_PATH=include/data/warehouse.duckdb
+```
+
+Astro passes `.env` into the containers too, and the path is relative to the repo root, so it
+points at the same file inside and outside Docker. Run `astro dev restart` after changing it.
+DuckDB allows one writer at a time, so don't run the command-line pipeline or the Spark job
+while an Airflow run is in progress. The dashboard only reads, so it's fine at any time.
+
 ## The DAG: `job_market_daily`
 
 ```

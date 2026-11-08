@@ -71,3 +71,25 @@ def store(request, tmp_path, monkeypatch):
         client = boto3.client("s3", region_name="us-east-1")
         client.create_bucket(Bucket="test-bucket")
         yield S3Store("test-bucket", client)
+
+
+@pytest.fixture(scope="session")
+def sample_warehouse(tmp_path_factory):
+    """A real warehouse: two sample days through extract -> load -> dbt build.
+    Shared by tests that need the actual mart schema. Skips when dbt isn't installed."""
+    import os
+    import shutil
+    from datetime import date
+
+    if not (os.getenv("DBT_EXECUTABLE") or shutil.which("dbt")):
+        pytest.skip("dbt is not installed")
+    from ingestion.pipeline import main
+
+    root = tmp_path_factory.mktemp("warehouse")
+    env = {"DATA_DIR": str(root), "DUCKDB_PATH": str(root / "w.duckdb"), "STORAGE_BACKEND": "local"}
+    with pytest.MonkeyPatch.context() as mp:
+        for k, v in env.items():
+            mp.setenv(k, v)
+        for d in (date(2026, 11, 2), date(2026, 11, 3)):
+            assert main(["--source", "sample", "--date", d.isoformat()]) == 0
+    return root
